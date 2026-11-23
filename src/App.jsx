@@ -1,279 +1,305 @@
 
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import React, { useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import {
-  LayoutDashboard, Wallet, ArrowLeftRight, ChartNoAxesCombined,
-  Settings, Bell, Search, Plus, TrendingUp, TrendingDown,
-  CreditCard, Sparkles, ShoppingBag, Utensils, Car,
-  ChevronDown, MoreHorizontal, ArrowUpRight, ArrowDownRight,
-  Menu, X
-} from 'lucide-react';
+  Wallet, TrendingUp, TrendingDown, Activity, Plus,
+  Trash2, AlertTriangle, ShieldCheck, Search, X,
+  LayoutDashboard, Receipt, PieChart as PieIcon,
+  Sparkles, ArrowUpRight, ArrowDownRight
+} from "lucide-react";
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, PieChart, Pie, Cell
-} from 'recharts';
-
-const weeklyData = [
-  { day: 'Mon', income: 3200, expenses: 1800 },
-  { day: 'Tue', income: 2800, expenses: 2200 },
-  { day: 'Wed', income: 4100, expenses: 1600 },
-  { day: 'Thu', income: 3500, expenses: 2900 },
-  { day: 'Fri', income: 4800, expenses: 2100 },
-  { day: 'Sat', income: 3900, expenses: 2600 },
-  { day: 'Sun', income: 5200, expenses: 1900 }
-];
-
-const categories = [
-  { name: 'Shopping', value: 4200, color: '#8B5CF6' },
-  { name: 'Food & Dining', value: 3100, color: '#22D3EE' },
-  { name: 'Transport', value: 1800, color: '#F59E0B' },
-  { name: 'Entertainment', value: 1400, color: '#EC4899' },
-  { name: 'Others', value: 1200, color: '#64748B' }
-];
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis,
+  Tooltip, PieChart, Pie, Cell
+} from "recharts";
 
 const initialTransactions = [
-  { name: 'Amazon', category: 'Shopping', date: 'Today, 10:42 AM', amount: -2499, icon: ShoppingBag, color: 'purple' },
-  { name: 'Swiggy', category: 'Food & Dining', date: 'Today, 09:15 AM', amount: -450, icon: Utensils, color: 'orange' },
-  { name: 'Uber', category: 'Transport', date: 'Yesterday', amount: -320, icon: Car, color: 'blue' },
-  { name: 'Monthly Allowance', category: 'Income', date: 'Yesterday', amount: 15000, icon: Wallet, color: 'green' },
-  { name: 'Netflix', category: 'Entertainment', date: 'Nov 20, 2026', amount: -649, icon: CreditCard, color: 'pink' }
+  { id: 1, name: "Grocery shopping", category: "Food", amount: 1250, type: "expense", date: "2026-11-20" },
+  { id: 2, name: "Monthly salary", category: "Income", amount: 45000, type: "income", date: "2026-11-20" },
+  { id: 3, name: "Fuel", category: "Transport", amount: 900, type: "expense", date: "2026-11-19" },
+  { id: 4, name: "Restaurant", category: "Food", amount: 850, type: "expense", date: "2026-11-18" },
+  { id: 5, name: "Electricity bill", category: "Bills", amount: 1800, type: "expense", date: "2026-11-17" },
+  { id: 6, name: "Movie tickets", category: "Entertainment", amount: 600, type: "expense", date: "2026-11-16" },
+  { id: 7, name: "Grocery shopping", category: "Food", amount: 1100, type: "expense", date: "2026-11-15" },
+  { id: 8, name: "Fuel", category: "Transport", amount: 750, type: "expense", date: "2026-11-14" },
+  { id: 9, name: "Restaurant", category: "Food", amount: 950, type: "expense", date: "2026-11-13" },
+  { id: 10, name: "Shopping", category: "Shopping", amount: 2200, type: "expense", date: "2026-11-12" }
 ];
 
-const navItems = [
-  { label: 'Overview', icon: LayoutDashboard },
-  { label: 'Transactions', icon: ArrowLeftRight },
-  { label: 'Budgets', icon: Wallet },
-  { label: 'Analytics', icon: ChartNoAxesCombined }
-];
+const COLORS = ["#8b5cf6", "#06b6d4", "#f59e0b", "#ec4899", "#22c55e", "#64748b"];
 
-function App() {
-  const [active, setActive] = useState('Overview');
+function detectAnomalies(transactions) {
+  const expenses = transactions.filter(t => t.type === "expense");
+
+  return expenses.map(transaction => {
+    const previous = expenses.filter(
+      t => t.category === transaction.category && t.id !== transaction.id
+    );
+
+    if (previous.length < 3) {
+      return { ...transaction, unusual: false, reason: "Not enough category history", risk: 0 };
+    }
+
+    const amounts = previous.map(t => t.amount);
+    const average = amounts.reduce((a, b) => a + b, 0) / amounts.length;
+
+    const variance = amounts.reduce(
+      (sum, amount) => sum + Math.pow(amount - average, 2), 0
+    ) / amounts.length;
+
+    const standardDeviation = Math.sqrt(variance);
+    const threshold = Math.max(average * 1.8, average + 2 * standardDeviation);
+    const unusual = transaction.amount > threshold;
+
+    const ratio = average > 0 ? transaction.amount / average : 1;
+    const risk = unusual ? Math.min(99, Math.round(55 + (ratio - 1.8) * 20)) : 0;
+
+    return {
+      ...transaction,
+      unusual,
+      risk,
+      reason: unusual
+        ? `This is ${ratio.toFixed(1)}× your average ${transaction.category} spending (₹${Math.round(average).toLocaleString("en-IN")}).`
+        : "Within your usual spending range"
+    };
+  });
+}
+
+function StatCard({ title, value, icon: Icon, color, subtitle }) {
+  return (
+    <motion.div whileHover={{ y: -4 }} className="stat-card">
+      <div className="stat-top">
+        <span>{title}</span>
+        <div className="stat-icon" style={{ color }}><Icon size={19} /></div>
+      </div>
+      <h2>{value}</h2>
+      <p>{subtitle}</p>
+    </motion.div>
+  );
+}
+
+export default function App() {
   const [transactions, setTransactions] = useState(initialTransactions);
   const [showModal, setShowModal] = useState(false);
-  const [mobileMenu, setMobileMenu] = useState(false);
-  const [form, setForm] = useState({ name: '', amount: '', category: 'Shopping', type: 'expense' });
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [form, setForm] = useState({
+    name: "", category: "Food", amount: "", type: "expense", date: new Date().toISOString().slice(0, 10)
+  });
 
-  const addTransaction = (e) => {
+  const analysed = useMemo(
+    () => detectAnomalies(transactions),
+    [transactions]
+  );
+
+  const alerts = analysed.filter(t => t.unusual);
+  const income = transactions.filter(t => t.type === "income").reduce((s, t) => s + t.amount, 0);
+  const expenses = transactions.filter(t => t.type === "expense").reduce((s, t) => s + t.amount, 0);
+  const balance = income - expenses;
+
+  const categoryData = Object.entries(
+    transactions.filter(t => t.type === "expense").reduce((acc, t) => {
+      acc[t.category] = (acc[t.category] || 0) + t.amount;
+      return acc;
+    }, {})
+  ).map(([name, value]) => ({ name, value }));
+
+  const chartData = [...transactions]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(t => ({
+      date: new Date(t.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
+      income: t.type === "income" ? t.amount : 0,
+      expenses: t.type === "expense" ? t.amount : 0
+    }));
+
+  const visibleTransactions = analysed
+    .filter(t => t.name.toLowerCase().includes(search.toLowerCase()))
+    .filter(t => filter === "all" || (filter === "unusual" ? t.unusual : t.type === filter))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  function addTransaction(e) {
     e.preventDefault();
-    if (!form.name || !form.amount || Number(form.amount) <= 0) return;
-    const icons = {
-      Shopping: ShoppingBag,
-      'Food & Dining': Utensils,
-      Transport: Car,
-      Income: Wallet
-    };
-    setTransactions([
-      {
-        name: form.name,
-        category: form.type === 'income' ? 'Income' : form.category,
-        date: 'Just now',
-        amount: form.type === 'income' ? Number(form.amount) : -Number(form.amount),
-        icon: icons[form.type === 'income' ? 'Income' : form.category] || CreditCard,
-        color: 'purple'
-      },
-      ...transactions
-    ]);
-    setShowModal(false);
-    setForm({ name: '', amount: '', category: 'Shopping', type: 'expense' });
-  };
 
-  const totalBalance = 24850;
-  const totalIncome = 45000;
-  const totalExpenses = 20150;
+    if (!form.name.trim() || !form.amount || Number(form.amount) <= 0) return;
+
+    setTransactions(prev => [
+      {
+        ...form,
+        id: Date.now(),
+        amount: Number(form.amount)
+      },
+      ...prev
+    ]);
+
+    setForm({
+      name: "", category: "Food", amount: "", type: "expense",
+      date: new Date().toISOString().slice(0, 10)
+    });
+    setShowModal(false);
+  }
+
+  function deleteTransaction(id) {
+    setTransactions(prev => prev.filter(t => t.id !== id));
+  }
+
+  const money = value => "₹" + value.toLocaleString("en-IN");
 
   return (
     <div className="app-shell">
-      <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}>
+      <aside className="sidebar">
         <div className="brand">
-          <div className="brand-icon"><Sparkles size={22} /></div>
-          <span>smart<span className="brand-accent">spend</span></span>
-          <button className="mobile-close" onClick={() => setMobileMenu(false)}><X /></button>
+          <div className="brand-icon"><Wallet size={23} /></div>
+          <div><strong>SmartSpend</strong><small>FINANCE INTELLIGENCE</small></div>
         </div>
 
-        <div className="workspace-label">WORKSPACE</div>
-        <nav>
-          {navItems.map(item => (
-            <button key={item.label}
-              className={`nav-item ${active === item.label ? 'active' : ''}`}
-              onClick={() => { setActive(item.label); setMobileMenu(false); }}>
-              <item.icon size={19} />
-              <span>{item.label}</span>
-              {item.label === 'Transactions' && <span className="nav-count">{transactions.length}</span>}
-            </button>
-          ))}
-        </nav>
+        <p className="nav-label">WORKSPACE</p>
+        <div className="nav-item active"><LayoutDashboard size={18} /> Overview</div>
+        <div className="nav-item"><Receipt size={18} /> Transactions</div>
+        <div className="nav-item"><PieIcon size={18} /> Analytics</div>
 
         <div className="sidebar-bottom">
-          <div className="workspace-label">PREFERENCES</div>
-          <button className="nav-item"><Settings size={19} /><span>Settings</span></button>
-          <div className="upgrade-card">
-            <div className="upgrade-icon"><Sparkles size={18} /></div>
-            <strong>Smarter finances.</strong>
-            <p>Discover insights and make better money decisions.</p>
-            <button onClick={() => setActive('Analytics')}>Explore analytics <ArrowUpRight size={14} /></button>
+          <div className="security-box">
+            <ShieldCheck size={20} />
+            <strong>Spending monitor</strong>
+            <small>Automatic transaction analysis is active.</small>
           </div>
-          <div className="profile">
-            <div className="avatar">D</div>
-            <div className="profile-info"><strong>My Account</strong><span>Personal workspace</span></div>
-            <MoreHorizontal size={19} />
-          </div>
+          <small className="version">SMARTSPEND AI · V2.0</small>
         </div>
       </aside>
 
-      {mobileMenu && <div className="mobile-overlay" onClick={() => setMobileMenu(false)} />}
-
-      <main className="main-area">
+      <main className="main-content">
         <header className="topbar">
-          <div className="topbar-left">
-            <button className="mobile-menu" onClick={() => setMobileMenu(true)}><Menu /></button>
-            <div className="breadcrumb">Workspace <span>/</span> <strong>{active}</strong></div>
+          <div>
+            <p className="eyebrow">PERSONAL FINANCE</p>
+            <h1>Financial Overview</h1>
+            <p className="muted">Monitor your money. Understand your habits.</p>
           </div>
-          <div className="topbar-actions">
-            <button className="search-button"><Search size={18} /><span>Search</span><kbd>⌘ K</kbd></button>
-            <button className="notification"><Bell size={19} /><i /></button>
-            <div className="top-avatar">D</div>
-          </div>
+          <button className="primary-btn" onClick={() => setShowModal(true)}>
+            <Plus size={18} /> Add transaction
+          </button>
         </header>
 
-        <div className="content">
-          <div className="page-heading">
-            <div>
-              <div className="eyebrow"><span className="status-dot" /> YOUR FINANCIAL OVERVIEW</div>
-              <h1>{active === 'Overview' ? 'Good morning.' : active}</h1>
-              <p>Here's what's happening with your money.</p>
+        <section className="stats-grid">
+          <StatCard title="Total balance" value={money(balance)} icon={Wallet} color="#a78bfa" subtitle="Income minus expenses" />
+          <StatCard title="Total income" value={money(income)} icon={TrendingUp} color="#34d399" subtitle="Recorded income" />
+          <StatCard title="Total expenses" value={money(expenses)} icon={TrendingDown} color="#fb7185" subtitle="Recorded expenses" />
+          <StatCard title="Unusual transactions" value={alerts.length} icon={AlertTriangle} color="#fbbf24" subtitle="Detected by spending analysis" />
+        </section>
+
+        <section className="content-grid">
+          <div className="panel chart-panel">
+            <div className="panel-heading">
+              <div><h3>Cash flow</h3><p>Recorded transaction activity</p></div>
+              <Activity size={20} className="purple" />
             </div>
-            <button className="primary-button" onClick={() => setShowModal(true)}>
-              <Plus size={18} /> Add transaction
-            </button>
+            <div className="chart-wrap">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="incomeGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#34d399" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="#34d399" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="expenseGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="date" stroke="#77758c" tick={{ fontSize: 11 }} />
+                  <YAxis stroke="#77758c" tick={{ fontSize: 11 }} />
+                  <Tooltip contentStyle={{ background: "#171625", border: "1px solid #343047", borderRadius: 10 }} />
+                  <Area type="monotone" dataKey="income" stroke="#34d399" fill="url(#incomeGradient)" />
+                  <Area type="monotone" dataKey="expenses" stroke="#8b5cf6" fill="url(#expenseGradient)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
           </div>
 
-          <section className="stats-grid">
-            <motion.div className="stat-card balance-card" whileHover={{ y: -3 }}>
-              <div className="stat-top"><span>Total balance</span><div className="stat-icon violet"><Wallet size={19} /></div></div>
-              <h2>₹{totalBalance.toLocaleString('en-IN')}</h2>
-              <div className="stat-foot"><span className="positive"><TrendingUp size={14} /> 12.8%</span><span>vs last month</span></div>
-              <div className="balance-glow" />
-            </motion.div>
-            <motion.div className="stat-card" whileHover={{ y: -3 }}>
-              <div className="stat-top"><span>Total income</span><div className="stat-icon green"><ArrowDownRight size={20} /></div></div>
-              <h2>₹{totalIncome.toLocaleString('en-IN')}</h2>
-              <div className="stat-foot"><span className="positive"><TrendingUp size={14} /> 8.2%</span><span>vs last month</span></div>
-            </motion.div>
-            <motion.div className="stat-card" whileHover={{ y: -3 }}>
-              <div className="stat-top"><span>Total expenses</span><div className="stat-icon orange"><ArrowUpRight size={19} /></div></div>
-              <h2>₹{totalExpenses.toLocaleString('en-IN')}</h2>
-              <div className="stat-foot"><span className="negative"><TrendingUp size={14} /> 4.6%</span><span>vs last month</span></div>
-            </motion.div>
-          </section>
-
-          <section className="dashboard-grid">
-            <div className="panel spending-panel">
-              <div className="panel-heading">
-                <div><h3>Financial activity</h3><p>Track your income and expenses</p></div>
-                <button className="select-button">This week <ChevronDown size={15} /></button>
-              </div>
-              <div className="chart-legend">
-                <span><i className="legend-income" /> Income</span>
-                <span><i className="legend-expense" /> Expenses</span>
-              </div>
-              <div className="activity-chart">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={weeklyData}>
-                    <defs>
-                      <linearGradient id="incomeGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.25} />
-                        <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0} />
-                      </linearGradient>
-                      <linearGradient id="expenseGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#22D3EE" stopOpacity={0.2} />
-                        <stop offset="95%" stopColor="#22D3EE" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke="#242938" strokeDasharray="4 5" vertical={false} />
-                    <XAxis dataKey="day" stroke="#777F91" tickLine={false} axisLine={false} />
-                    <YAxis stroke="#777F91" tickLine={false} axisLine={false} tickFormatter={v => `₹${v / 1000}k`} />
-                    <Tooltip contentStyle={{ background: '#171B29', border: '1px solid #30364A', borderRadius: 12, color: '#fff' }} />
-                    <Area type="monotone" dataKey="income" stroke="#9B7AFB" strokeWidth={2.5} fill="url(#incomeGradient)" />
-                    <Area type="monotone" dataKey="expenses" stroke="#22D3EE" strokeWidth={2.5} fill="url(#expenseGradient)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+          <div className="panel category-panel">
+            <div className="panel-heading">
+              <div><h3>Spending categories</h3><p>Where your money goes</p></div>
+              <PieIcon size={20} className="purple" />
             </div>
-
-            <div className="panel category-panel">
-              <div className="panel-heading">
-                <div><h3>Spending breakdown</h3><p>Where your money goes</p></div>
-                <button className="dots-button"><MoreHorizontal /></button>
-              </div>
-              <div className="donut-wrap">
+            <div className="pie-wrap">
+              {categoryData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={categories} dataKey="value" nameKey="name" innerRadius={67} outerRadius={91} paddingAngle={5} stroke="none">
-                      {categories.map((item, index) => <Cell key={index} fill={item.color} />)}
+                    <Pie data={categoryData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={85} paddingAngle={4}>
+                      {categoryData.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
                     </Pie>
-                    <Tooltip contentStyle={{ background: '#171B29', border: '1px solid #30364A', borderRadius: 10, color: '#fff' }} />
+                    <Tooltip contentStyle={{ background: "#171625", border: "1px solid #343047", borderRadius: 10 }} />
                   </PieChart>
                 </ResponsiveContainer>
-                <div className="donut-center"><strong>₹11.7k</strong><span>Total spent</span></div>
-              </div>
-              <div className="category-list">
-                {categories.map(item => (
-                  <div className="category-row" key={item.name}>
-                    <span className="category-name"><i style={{ background: item.color }} />{item.name}</span>
-                    <strong>₹{item.value.toLocaleString('en-IN')}</strong>
-                  </div>
-                ))}
-              </div>
+              ) : <p className="muted">No expenses recorded yet.</p>}
             </div>
-          </section>
+            <div className="legend">
+              {categoryData.map((c, i) => (
+                <div key={c.name}><span style={{ background: COLORS[i % COLORS.length] }} />{c.name}<strong>{money(c.value)}</strong></div>
+              ))}
+            </div>
+          </div>
+        </section>
 
-          <section className="bottom-grid">
-            <div className="panel transactions-panel">
-              <div className="panel-heading">
-                <div><h3>Recent transactions</h3><p>Your latest financial activity</p></div>
-                <button className="text-button" onClick={() => setActive('Transactions')}>View all <ArrowUpRight size={15} /></button>
-              </div>
-              <div className="transaction-list">
-                {transactions.slice(0, 5).map((item, index) => (
-                  <div className="transaction-row" key={`${item.name}-${index}`}>
-                    <div className={`transaction-icon ${item.color}`}><item.icon size={19} /></div>
-                    <div className="transaction-details"><strong>{item.name}</strong><span>{item.category} · {item.date}</span></div>
-                    <strong className={item.amount > 0 ? 'amount-positive' : 'amount-negative'}>
-                      {item.amount > 0 ? '+' : '-'}₹{Math.abs(item.amount).toLocaleString('en-IN')}
-                    </strong>
-                  </div>
-                ))}
-              </div>
-            </div>
+        <section className="panel alerts-panel">
+          <div className="panel-heading">
+            <div><h3><Sparkles size={18} className="purple" /> Unusual spending alerts</h3><p>Transactions compared against your category history</p></div>
+            <span className="alert-count">{alerts.length} detected</span>
+          </div>
 
-            <div className="panel insight-panel">
-              <div className="insight-heading"><div className="insight-symbol"><Sparkles size={19} /></div><span>SMART INSIGHTS</span><span className="beta-tag">BETA</span></div>
-              <h3>Your spending snapshot</h3>
-              <p>You've spent ₹11,700 across five categories in this sample overview. Shopping is currently your largest spending category.</p>
-              <div className="insight-divider" />
-              <div className="insight-tip"><TrendingDown size={17} /><span>Review recurring subscriptions to identify potential savings.</span></div>
-              <button onClick={() => setActive('Analytics')}>Explore insights <ArrowUpRight size={15} /></button>
-              <div className="insight-decoration"><Sparkles size={95} /></div>
+          {alerts.length === 0 ? (
+            <div className="empty-state"><ShieldCheck size={30} /><strong>No unusual transactions detected</strong><p>New transactions will be checked automatically when enough category history is available.</p></div>
+          ) : alerts.map(t => (
+            <div className="alert-row" key={t.id}>
+              <div className="alert-symbol"><AlertTriangle size={20} /></div>
+              <div className="alert-info"><strong>{t.name} · {money(t.amount)}</strong><p>{t.reason}</p></div>
+              <span className="risk-score">Risk {t.risk}/99</span>
             </div>
-          </section>
-          <footer>© 2026 Smart Spend AI <span>Built for smarter financial decisions.</span></footer>
-        </div>
+          ))}
+        </section>
+
+        <section className="panel transactions-panel">
+          <div className="panel-heading">
+            <div><h3>Recent transactions</h3><p>Your recorded financial activity</p></div>
+            <div className="search-box"><Search size={16} /><input placeholder="Search transactions..." value={search} onChange={e => setSearch(e.target.value)} /></div>
+          </div>
+
+          <div className="filters">
+            {["all", "income", "expense", "unusual"].map(f => (
+              <button key={f} onClick={() => setFilter(f)} className={filter === f ? "filter active-filter" : "filter"}>
+                {f === "all" ? "All" : f === "unusual" ? "Unusual" : f[0].toUpperCase() + f.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          <div className="transaction-list">
+            {visibleTransactions.map(t => (
+              <div className="transaction-row" key={t.id}>
+                <div className="transaction-icon">{t.type === "income" ? <ArrowDownRight /> : <ArrowUpRight />}</div>
+                <div className="transaction-info"><strong>{t.name}</strong><small>{t.category} · {t.date}</small></div>
+                {t.unusual && <span className="unusual-tag">UNUSUAL</span>}
+                <strong className={t.type === "income" ? "income-text" : "expense-text"}>{t.type === "income" ? "+" : "-"}{money(t.amount)}</strong>
+                <button className="delete-btn" onClick={() => deleteTransaction(t.id)} title="Delete transaction"><Trash2 size={16} /></button>
+              </div>
+            ))}
+            {visibleTransactions.length === 0 && <p className="empty-message">No matching transactions.</p>}
+          </div>
+        </section>
+
+        <footer>SmartSpend AI · Spending analysis is based on transactions entered in this browser session.</footer>
       </main>
 
       {showModal && (
         <div className="modal-backdrop" onClick={() => setShowModal(false)}>
-          <form className="transaction-modal" onSubmit={addTransaction} onClick={e => e.stopPropagation()}>
-            <div className="modal-heading"><div><h3>New transaction</h3><p>Add an income or expense entry.</p></div><button type="button" onClick={() => setShowModal(false)}><X /></button></div>
-            <label>Transaction name<input required placeholder="e.g. Groceries" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></label>
-            <label>Amount (₹)<input required type="number" min="1" placeholder="0.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></label>
-            <label>Type<select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}><option value="expense">Expense</option><option value="income">Income</option></select></label>
-            {form.type === 'expense' && <label>Category<select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}><option>Shopping</option><option>Food & Dining</option><option>Transport</option><option>Entertainment</option></select></label>}
-            <button className="primary-button modal-submit" type="submit"><Plus size={17} /> Save transaction</button>
-          </form>
+          <motion.form initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="modal" onSubmit={addTransaction} onClick={e => e.stopPropagation()}>
+            <div className="modal-heading"><div><h2>Add transaction</h2><p>Enter the details below</p></div><button type="button" className="close-btn" onClick={() => setShowModal(false)}><X /></button></div>
+            <label>Description<input required placeholder="e.g. Grocery shopping" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></label>
+            <label>Amount (₹)<input required type="number" min="1" placeholder="Enter amount" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} /></label>
+            <label>Category<select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{["Food", "Transport", "Bills", "Entertainment", "Shopping", "Health", "Education", "Other", "Income"].map(c => <option key={c}>{c}</option>)}</select></label>
+            <label>Transaction type<select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}><option value="expense">Expense</option><option value="income">Income</option></select></label>
+            <label>Date<input required type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></label>
+            <button className="primary-btn submit-btn" type="submit"><Plus size={18} /> Save transaction</button>
+          </motion.form>
         </div>
       )}
     </div>
   );
 }
-
-export default App;
